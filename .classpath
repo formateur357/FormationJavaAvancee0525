@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="src" path="Corrections/Correction1_GestionEntrepotConcurrent"/>
+	<classpathentry kind="src" path="Corrections/Correction2_ChatAppProjet"/>
+	<classpathentry kind="src" path="Corrections/Correction3_RMI_Banque"/>
+	<classpathentry kind="src" path="Corrections/Correction4_JMS"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
