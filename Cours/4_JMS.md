@@ -419,8 +419,25 @@ Topic topic = session.createTopic("ALERTES_STOCK");
 
 // Abonnement durable
 TopicSubscriber subscriber = session.createDurableSubscriber(topic, "surveillance-sub");
-TextMessage message = (TextMessage) subscriber.receive();
-System.out.println("ALERTE REÇUE : " + message.getText());
+
+// plusieurs messages
+subscriber.setMessageListener(new MessageListener() {
+    @Override
+    public void onMessage(Message message) {
+        if (message instanceof TextMessage) {
+            try {
+                String texte = ((TexteMessage) message).getText();
+                System.out.println("Alerte recue : " + texte);
+            } catch (JMSException e) {
+                System.err.println("Erreur de lecture du message : " + e.getMessage());
+            }
+        }
+    }
+})
+
+// un seul message a gerer
+// TextMessage message = (TextMessage) subscriber.receive();
+// System.out.println("ALERTE REÇUE : " + message.getText());
 
 connection.close();
 ```

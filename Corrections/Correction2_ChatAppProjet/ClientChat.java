@@ -12,10 +12,12 @@ public class ClientChat {
     }
 
     public void demarrer(String hoteServeur, int portServeur) throws IOException {
+        // Connexion au serveur central (serveur de chat)
         Socket socket = new Socket(hoteServeur, portServeur);
         ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
         ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
 
+        // Thread pour recevoir les messages du serveur (asynchrone)
         new Thread(() -> {
             try {
                 Object obj;
@@ -29,13 +31,24 @@ public class ClientChat {
             }
         }).start();
 
+        // === Partie SERVEUR P2P ===
+        // Thread qui écoute les connexions entrantes des autres clients (pairs)
         new Thread(() -> {
             try (ServerSocket p2pServer = new ServerSocket(portLocalP2P)) {
                 while (true) {
+                    // Accepte une connexion entrante d’un pair (client P2P)
                     Socket client = p2pServer.accept();
-                    BufferedReader inP2P = new BufferedReader(new InputStreamReader(client.getInputStream()));
+
+                    // Prépare la lecture du message envoyé
+                    BufferedReader inP2P = new BufferedReader(
+                        new InputStreamReader(client.getInputStream())
+                    );
+
+                    // Lit et affiche le message reçu via le protocole P2P
                     String msg = inP2P.readLine();
                     System.out.println("[P2P] " + msg);
+
+                    // Ferme la connexion après réception (protocole simple : 1 message = 1 connexion)
                     client.close();
                 }
             } catch (IOException e) {
@@ -43,10 +56,14 @@ public class ClientChat {
             }
         }).start();
 
+        // === Partie CLIENT (entrée utilisateur et envoi) ===
         Scanner scanner = new Scanner(System.in);
         while (true) {
             String texte = scanner.nextLine();
+
             if (texte.startsWith("@peer")) {
+                // Commande spéciale pour envoyer un message directement à un autre pair
+                // Format attendu : @peer IP PORT message
                 String[] parts = texte.split(" ", 4);
                 if (parts.length == 4) {
                     String ip = parts[1];
@@ -57,6 +74,7 @@ public class ClientChat {
                     System.out.println("Utilisation : @peer IP PORT message");
                 }
             } else {
+                // Message classique envoyé au serveur central
                 Message msg = new Message(nom, texte);
                 out.writeObject(msg);
                 out.flush();
@@ -64,9 +82,13 @@ public class ClientChat {
         }
     }
 
+    // Méthode utilitaire pour envoyer un message directement à un autre client (P2P)
     private void envoyerP2P(String ip, int port, String message) {
-        try (Socket socket = new Socket(ip, port);
-             PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
+        try (
+            Socket socket = new Socket(ip, port);
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true)
+        ) {
+            // Envoie du message au client destinataire (serveur P2P distant)
             out.println(message);
         } catch (IOException e) {
             System.out.println("Échec envoi P2P : " + e.getMessage());

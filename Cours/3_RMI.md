@@ -7,8 +7,6 @@ Un **ORB (Object Request Broker)** est un **intermédiaire** qui permet à un ob
 - la **sérialisation/désérialisation** des données,
 - la **communication réseau** sous-jacente.
 
----
-
 ### Objectif
 
 Fournir une **abstraction de la distribution** des objets dans un système réparti.
@@ -21,15 +19,11 @@ Fournir une **abstraction de la distribution** des objets dans un système répa
 2. L’appel est intercepté et transmis via l’ORB au **serveur distant**.
 3. Le serveur exécute la méthode réelle et renvoie le résultat via l’ORB.
 
----
-
 ### Technologies fondées sur le concept d’ORB
 
 - **Java RMI** (Remote Method Invocation),
 - **CORBA** (Common Object Request Broker Architecture),
 - **gRPC**, **Thrift**, **Web Services**, etc.
-
----
 
 ### Cas d’usage courant
 
@@ -63,17 +57,23 @@ import java.rmi.RemoteException;
 import java.util.HashMap;
 
 public class BanqueServiceImpl extends UnicastRemoteObject implements BanqueService {
-    private final HashMap<String, Double> comptes;
+// Structure de données simulant une base de comptes
+private final HashMap<String, Double> comptes;
 
-    public BanqueServiceImpl() throws RemoteException {
-        comptes = new HashMap<>();
-        comptes.put("123", 2500.0);
-        comptes.put("456", 12500.5);
-    }
+// Constructeur : initialise la base de comptes
+// Appelle le constructeur de UnicastRemoteObject (export automatique de l'objet)
+public BanqueServiceImpl() throws RemoteException {
+    comptes = new HashMap<>();
+    comptes.put("123", 2500.0);    // Exemple de compte
+    comptes.put("456", 12500.5);   // Exemple de compte
+}
 
-    public double consulterSolde(String numeroCompte) throws RemoteException {
-        return comptes.getOrDefault(numeroCompte, 0.0);
-    }
+// Implémentation de la méthode distante
+// Retourne le solde du compte s’il existe, ou 0.0 sinon
+public double consulterSolde(String numeroCompte) throws RemoteException {
+    return comptes.getOrDefault(numeroCompte, 0.0);
+}
+
 }
 ```
 
@@ -86,11 +86,19 @@ import java.rmi.registry.Registry;
 
 public class Serveur {
     public static void main(String[] args) throws Exception {
+        // Création de l’implémentation du service
         BanqueServiceImpl obj = new BanqueServiceImpl();
+
+        // Création d’un registre RMI sur le port 1099 (par défaut)
         Registry registry = LocateRegistry.createRegistry(1099);
+
+        // Enregistrement du service sous le nom "BanqueService"
         registry.rebind("BanqueService", obj);
+
+        // Message d’information
         System.out.println("Serveur RMI prêt...");
     }
+
 }
 ```
 
@@ -103,8 +111,13 @@ import java.rmi.registry.Registry;
 
 public class Client {
     public static void main(String[] args) throws Exception {
+        // Accès au registre RMI local (localhost)
         Registry registry = LocateRegistry.getRegistry("localhost");
+
+        // Récupération du stub du service distant par lookup
         BanqueService stub = (BanqueService) registry.lookup("BanqueService");
+
+        // Appel à distance de la méthode consulterSolde sur le stub
         System.out.println("Solde du compte 123 : " + stub.consulterSolde("123") + " €");
     }
 }
@@ -135,7 +148,7 @@ Solde du compte 123 : 2500.0 €
 ### Concepts clés du modèle RMI
 
 | Concept | Description |
-|--------|-------------|
+|-------- |-------------|
 | **Objet distant** | Objet dont les méthodes peuvent être invoquées à distance |
 | **Interface distante** | Interface que l'objet distant implémente, elle hérite de `java.rmi.Remote` |
 | **Squelette (Stub)** | Représentation locale de l'objet distant côté client (généré automatiquement depuis Java 5) |
