@@ -272,105 +272,241 @@ m.invoke(service);
 ```
 
 ---
-
 # 6.4 Réflexivité et annotations en Java 5
 
 ## **Objectif**
 
-Depuis Java 5, les **annotations** permettent d’ajouter des **métadonnées** à du code. Grâce à la **réflexion**, on peut lire ces annotations à l’exécution et modifier dynamiquement le comportement d’une application.
+Depuis Java 5, les **annotations** ne servent pas seulement à ajouter des métadonnées aux méthodes, mais aussi aux classes, champs et constructeurs. La réflexion permet de lire ces annotations à l’exécution et d’ajuster le comportement d’une application en fonction de ces métadonnées.
 
----
+## 4. Utilisation avancée des annotations
 
-## **1. Définir une annotation personnalisée**
+### 1. Lecture d'annotations sur différents éléments
+
+Vous pouvez définir une annotation capable de s'appliquer à plusieurs cibles :
 
 ```java
 import java.lang.annotation.*;
 
-@Retention(RetentionPolicy.RUNTIME) // indispensable pour la réflexion
-@Target(ElementType.METHOD)         // on applique cette annotation aux méthodes
-public @interface Action {
-    String description() default "Aucune description";
-}
-```
-@Retention(RetentionPolicy.RUNTIME) est crucial : sans cela, l’annotation n’est pas accessible via la réflexion.
-
-## 2. Utiliser l’annotation sur une méthode
-
-```java
-public class Tâches {
-    @Action(description = "Exécute une tâche de nettoyage")
-    public void nettoyer() {
-        System.out.println("Nettoyage en cours...");
-    }
-
-    @Action(description = "Exécute une tâche de sauvegarde")
-    public void sauvegarder() {
-        System.out.println("Sauvegarde en cours...");
-    }
-
-    public void ignorer() {
-        System.out.println("Cette méthode n’est pas annotée.");
-    }
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.TYPE, ElementType.FIELD, ElementType.CONSTRUCTOR, ElementType.METHOD})
+public @interface Info {
+    String details() default "Info par défaut";
 }
 ```
 
-## 3. Lire dynamiquement les annotations
+Exemple d'utilisation sur une classe, ses champs, et constructeurs :
 
 ```java
-import java.lang.reflect.*;
+@Info(details = "Classe principale")
+public class Exemple {
+    
+    @Info(details = "Champ important")
+    private String nom;
+    
+    @Info(details = "Constructeur standard")
+    public Exemple() { }
+    
+    @Info(details = "Méthode de traitement")
+    public void traiter() { }
+}
+```
 
-public class Analyseur {
-    public static void main(String[] args) throws Exception {
-        Class<?> clazz = Tâches.class;
-        Object instance = clazz.getDeclaredConstructor().newInstance();
+Pour lire ces annotations :
 
-        for (Method m : clazz.getDeclaredMethods()) {
-            if (m.isAnnotationPresent(Action.class)) {
-                Action a = m.getAnnotation(Action.class);
-                System.out.println("Action : " + m.getName() + " -> " + a.description());
-                m.invoke(instance); // appel dynamique de la méthode
+```java
+Class<?> clazz = Exemple.class;
+
+// Annotation sur la classe
+if (clazz.isAnnotationPresent(Info.class)) {
+    Info info = clazz.getAnnotation(Info.class);
+    System.out.println("Classe: " + info.details());
+}
+
+// Annotation sur les champs
+for (Field f : clazz.getDeclaredFields()) {
+    if (f.isAnnotationPresent(Info.class)) {
+        Info info = f.getAnnotation(Info.class);
+        System.out.println("Champ " + f.getName() + ": " + info.details());
+    }
+}
+
+// Annotation sur le constructeur
+for (Constructor<?> c : clazz.getDeclaredConstructors()) {
+    if (c.isAnnotationPresent(Info.class)) {
+        Info info = c.getAnnotation(Info.class);
+        System.out.println("Constructeur: " + info.details());
+    }
+}
+
+// Annotation sur les méthodes
+for (Method m : clazz.getDeclaredMethods()) {
+    if (m.isAnnotationPresent(Info.class)) {
+        Info info = m.getAnnotation(Info.class);
+        System.out.println("Méthode " + m.getName() + ": " + info.details());
+    }
+}
+```
+
+### 2. Lecture imbriquée ou conditionnelle d'annotations
+
+Il est possible d'effectuer une lecture conditionnelle, par exemple, lire l'annotation d'une méthode et, si elle est présente, inspecter un champ spécifique annoté dans la même classe.
+
+Définissons une nouvelle annotation pour configurer un champ :
+
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface Config {
+    String valeur() default "defaut";
+}
+```
+
+Utilisation dans une classe :
+
+```java
+public class TâchesAvancées {
+
+    @Config(valeur = "vérification")
+    private String parametre;
+
+    @Action(description = "Méthode avec configuration")
+    public void executer() {
+        System.out.println("Exécution de la méthode.");
+    }
+}
+```
+
+Lecture conditionnelle :
+
+```java
+Class<?> clazz = TâchesAvancées.class;
+Object instance = clazz.getDeclaredConstructor().newInstance();
+
+// Parcourir les méthodes annotées avec @Action
+for (Method m : clazz.getDeclaredMethods()) {
+    if (m.isAnnotationPresent(Action.class)) {
+        Action action = m.getAnnotation(Action.class);
+        System.out.println("Action: " + m.getName() + " -> " + action.description());
+        
+        // Vérifier si la classe contient un champ annoté avec @Config
+        for (Field f : clazz.getDeclaredFields()) {
+            if (f.isAnnotationPresent(Config.class)) {
+                Config config = f.getAnnotation(Config.class);
+                System.out.println("Champ " + f.getName() + " configuré avec: " + config.valeur());
             }
         }
+        m.invoke(instance);
     }
 }
 ```
 
-## 4. Cas d’usage réel
+### 3. Les méta-annotations : @Inherited et @Repeatable
 
-### Un mini système de traitement automatique de services
+#### @Inherited
 
-Imaginons un framework léger qui détecte les méthodes annotées comme des opérations à exposer via une API ou à exécuter automatiquement à un moment donné (startup, cron, etc).
+L'annotation @Inherited permet à une annotation placée sur une classe d'être automatiquement présente sur ses sous-classes.
 
 Exemple :
 
 ```java
-public class MonService {
-
-    @Action(description = "Tâche de démarrage")
-    public void init() {
-        System.out.println("Initialisation terminée !");
-    }
-
-    @Action(description = "Nettoyage automatique")
-    public void clean() {
-        System.out.println("Nettoyage terminé !");
-    }
+import java.lang.annotation.*;
+@Inherited
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface ClasseInfo {
+    String valeur();
 }
+
+@ClasseInfo(valeur = "Super classe")
+public class Parent { }
+
+public class Enfant extends Parent { }
 ```
-Et un lanceur dynamique basé sur la réflexion :
+
+Lors de l'inspection de la classe Enfant, on retrouve l'annotation héritée :
+
 ```java
-public class Lanceur {
-    public static void lancer(Class<?> serviceClass) throws Exception {
-        Object service = serviceClass.getDeclaredConstructor().newInstance();
-        for (Method method : serviceClass.getDeclaredMethods()) {
-            if (method.isAnnotationPresent(Action.class)) {
-                method.invoke(service);
-            }
-        }
-    }
+if (Enfant.class.isAnnotationPresent(ClasseInfo.class)) {
+    ClasseInfo info = Enfant.class.getAnnotation(ClasseInfo.class);
+    System.out.println("Enfant hérite de: " + info.valeur());
+}
+```
 
-    public static void main(String[] args) throws Exception {
-        lancer(MonService.class);
+#### @Repeatable
+
+L'annotation @Repeatable permet d'appliquer plusieurs instances d'une même annotation sur un même élément.
+
+Déclarons une annotation répétable :
+
+```java
+import java.lang.annotation.*;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@Repeatable(Labels.class)
+public @interface Label {
+    String name();
+}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface Labels {
+    Label[] value();
+}
+```
+
+Utilisation sur une méthode :
+
+```java
+public class MultiEtiquettes {
+
+    @Label(name = "Critique")
+    @Label(name = "Testée")
+    public void verifier() {
+        System.out.println("Vérification en cours...");
     }
 }
 ```
+
+Lecture des annotations répétées :
+
+```java
+Method m = MultiEtiquettes.class.getMethod("verifier");
+if (m.isAnnotationPresent(Labels.class)) {
+    Labels labels = m.getAnnotation(Labels.class);
+    for (Label l : labels.value()) {
+        System.out.println("Label: " + l.name());
+    }
+} else if (m.isAnnotationPresent(Label.class)) {
+    // Si non regroupées automatiquement, lecture individuelle
+    Label label = m.getAnnotation(Label.class);
+    System.out.println("Label: " + label.name());
+}
+```
+
+Ces exemples montrent comment exploiter pleinement la puissance des annotations avec la réflexion en Java pour adapter dynamiquement le comportement de vos applications selon des métadonnées enrichies.
+
+## 6.5 Sécurité, limitations et bonnes pratiques
+
+### Risques et limitations
+
+- **Contournement des règles d'encapsulation :**  
+    Utiliser setAccessible(true) permet d'accéder à des membres privés, contournant ainsi les principes d'encapsulation. Ceci peut compromettre l'intégrité des objets et rendre le code plus difficile à maintenir.
+
+- **Impact sur les performances :**  
+    Les opérations en réflexion sont généralement plus lentes que les accès directs. Dans des contextes critiques en termes de performances, leur utilisation doit être limitée.
+
+- **Incompatibilités et restrictions :**  
+    - Avec Java 9+ et son système de modules, l'accès non autorisé peut poser des problèmes, en particulier dans les environnements sécurisés (Java EE, Applets).  
+    - Java 17+ impose des restrictions plus strictes via le module system et l'option --illegal-access=deny, ce qui peut empêcher certaines utilisations de la réflexion dans des modules protégés.
+
+### Bonnes pratiques
+
+- **Limiter l'usage :**  
+    Utiliser la réflexion uniquement lorsque cela est nécessaire. Privilégier l'accès direct lorsque cela est possible.
+
+- **Gérer les exceptions :**  
+    La réflexion peut générer de nombreuses exceptions (ClassNotFoundException, IllegalAccessException, etc.). Assurer une gestion appropriée de ces cas pour améliorer la robustesse de l'application.
+
+- **Penser à la sécurité :**  
+    Evaluer les risques d'exposer des membres privés et utiliser des contrôles d'accès pour éviter les abus.

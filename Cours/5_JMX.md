@@ -1,47 +1,279 @@
 # 5.1 Le modèle JMX (Java Management Extensions)
 
-## **Introduction**
+## Introduction
 
-JMX (Java Management Extensions) est une technologie Java permettant de **surveiller**, **gérer** et **administrer** des ressources Java (applications, services, composants système).
-
-Il est largement utilisé pour exposer des métriques, gérer dynamiquement des composants, ou encore modifier des comportements à chaud.
+JMX est une technologie permettant de surveiller, gérer et administrer des ressources Java (applications, services, composants système). Elle sert à exposer des métriques, gérer dynamiquement les composants et modifier des comportements à chaud.
 
 ---
 
-## **Concepts de base**
+## Concepts de base
 
-### **MBean (Managed Bean)**
+### Exploration des différents types de MBean
 
-- Un MBean est une classe Java spéciale exposant une **interface de gestion**.
-- Il existe 4 types de MBeans :
-  - Standard MBean
-  - Dynamic MBean
-  - Open MBean
-  - Model MBean
+Dans JMX, un MBean (Managed Bean) expose des ressources de gestion (attributs, opérations). Voici quatre types principaux :
 
-Le plus courant est le **Standard MBean**.
+#### 1. Standard MBean  
+Le type le plus courant, défini par une interface suffixée de "MBean".
 
-### **MBeanServer**
+Exemple :
 
-- Un **registre** centralisé où sont enregistrés tous les MBeans.
-- Sert de point d'accès aux MBeans pour les outils de gestion.
+```java
+// Interface Standard MBean définissant les opérations de gestion
+public interface StockManagerMBean {
+    int getStockTotal();
+    void reinitialiserStock();
+}
 
-### **ObjectName**
+// Implémentation du Standard MBean
+public class StockManager implements StockManagerMBean {
+    private final Map<String, Integer> stock = new HashMap<>();
 
-- Identifie de manière unique un MBean dans le serveur de MBeans.
+    public StockManager() {
+        stock.put("ProduitA", 100);
+        stock.put("ProduitB", 150);
+    }
+
+    public int getStockTotal() {
+        return stock.values().stream().mapToInt(Integer::intValue).sum();
+    }
+
+    public void reinitialiserStock() {
+        stock.replaceAll((k, v) -> 100);
+    }
+}
+```
+
+#### 2. Dynamic MBean  
+Permet de définir dynamiquement attributs et opérations sans interface prédéfinie.
+
+Exemple :
+
+```java
+import javax.management.*;
+import java.util.HashMap;
+import java.util.Map;
+
+public class DynamicConfig implements DynamicMBean {
+    private final Map<String, Object> attributes = new HashMap<>();
+
+    public DynamicConfig() {
+        attributes.put("ConfigValue", 42);
+    }
+
+    @Override
+    public Object getAttribute(String attribute) throws AttributeNotFoundException {
+        if (attributes.containsKey(attribute)) {
+            return attributes.get(attribute);
+        }
+        throw new AttributeNotFoundException("Attribut non trouvé: " + attribute);
+    }
+
+    @Override
+    public void setAttribute(Attribute attribute) throws AttributeNotFoundException {
+        if (attributes.containsKey(attribute.getName())) {
+            attributes.put(attribute.getName(), attribute.getValue());
+        } else {
+            throw new AttributeNotFoundException("Attribut non trouvé: " + attribute.getName());
+        }
+    }
+
+    @Override
+    public AttributeList getAttributes(String[] attributeNames) {
+        AttributeList list = new AttributeList();
+        for (String name : attributeNames) {
+            try {
+                list.add(new Attribute(name, getAttribute(name)));
+            } catch (AttributeNotFoundException e) {
+                // Ignorer les attributs non trouvés
+            }
+        }
+        return list;
+    }
+
+    @Override
+    public AttributeList setAttributes(AttributeList attributes) {
+        AttributeList list = new AttributeList();
+        for (Object obj : attributes) {
+            if (obj instanceof Attribute) {
+                Attribute attr = (Attribute) obj;
+                try {
+                    setAttribute(attr);
+                    list.add(attr);
+                } catch (AttributeNotFoundException e) {
+                    // Ignorer les erreurs lors de la mise à jour
+                }
+            }
+        }
+        return list;
+    }
+
+    @Override
+    public Object invoke(String actionName, Object[] params, String[] signature) {
+        if ("reset".equals(actionName)) {
+            attributes.put("ConfigValue", 42);
+            return "Reset effectué";
+        }
+        return null;
+    }
+
+    @Override
+    public MBeanInfo getMBeanInfo() {
+        MBeanAttributeInfo configAttribute = new MBeanAttributeInfo(
+            "ConfigValue",
+            "java.lang.Integer",
+            "Valeur de configuration dynamique",
+            true,  true,  false
+        );
+        MBeanOperationInfo resetOperation = new MBeanOperationInfo(
+            "reset",
+            "Réinitialise la configuration",
+            null,
+            "java.lang.String",
+            MBeanOperationInfo.ACTION
+        );
+        return new MBeanInfo(
+            this.getClass().getName(),
+            "Dynamic Config MBean",
+            new MBeanAttributeInfo[]{ configAttribute },
+            null,
+            new MBeanOperationInfo[]{ resetOperation },
+            null
+        );
+    }
+}
+```
+
+#### 3. Open MBean  
+Utilise des types de données ouverts pour garantir l’interopérabilité entre implémentations.
+
+Exemple :
+
+```java
+import javax.management.openmbean.*;
+
+public interface OpenConfigMBean {
+    CompositeData getConfigData();
+    void updateConfig(String key, int value);
+}
+
+public class OpenConfig implements OpenConfigMBean {
+    private final Map<String, Integer> config = new HashMap<>();
+
+    public OpenConfig() {
+        config.put("MaxThreads", 10);
+        config.put("Timeout", 5000);
+    }
+
+    public CompositeData getConfigData() {
+        try {
+            String[] itemNames = new String[] { "MaxThreads", "Timeout" };
+            String[] itemDescriptions = new String[] { "Nombre maximum de threads", "Délai en millisecondes" };
+            OpenType<Integer>[] itemTypes = new OpenType[] { SimpleType.INTEGER, SimpleType.INTEGER };
+
+            CompositeType compositeType = new CompositeType(
+                "ConfigData", "Données de configuration",
+                itemNames, itemDescriptions, itemTypes
+            );
+
+            Map<String, Object> values = new HashMap<>();
+            values.put("MaxThreads", config.get("MaxThreads"));
+            values.put("Timeout", config.get("Timeout"));
+
+            return new CompositeDataSupport(compositeType, values);
+        } catch (OpenDataException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public void updateConfig(String key, int value) {
+        config.put(key, value);
+    }
+}
+```
+
+#### 4. Model MBean  
+Offre un contrôle fin via des descripteurs pour une gestion personnalisée.
+
+Exemple :
+
+```java
+import javax.management.*;
+import javax.management.modelmbean.*;
+
+public class ModelConfig {
+    private int level = 1;
+    
+    public int getLevel() { 
+        return level; 
+    }
+    
+    public void setLevel(int level) { 
+        this.level = level; 
+    }
+    
+    public String reboot() {
+        level = 1;
+        return "Reboot effectué, niveau remis à 1";
+    }
+}
+
+public class ModelMBeanExample {
+    public static void main(String[] args) throws Exception {
+        MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+
+        RequiredModelMBean modelMBean = new RequiredModelMBean();
+        ModelConfig config = new ModelConfig();
+        modelMBean.setManagedResource(config, "ObjectReference");
+
+        Descriptor levelDescriptor = new DescriptorSupport(new String[] {
+            "name=Level", 
+            "descriptorType=attribute", 
+            "displayName=Niveau", 
+            "currencyTimeLimit=20", 
+            "persistPolicy=OnUpdate"
+        });
+        ModelMBeanAttributeInfo levelInfo = new ModelMBeanAttributeInfo(
+            "Level", 
+            "int", 
+            "Niveau de configuration",
+            true,  
+            true,  
+            false,
+            levelDescriptor
+        );
+
+        ModelMBeanOperationInfo rebootInfo = new ModelMBeanOperationInfo(
+            "Reboot",
+            "Réinitialise la configuration",
+            null,
+            "java.lang.String",
+            MBeanOperationInfo.ACTION
+        );
+
+        ModelMBeanInfoSupport info = new ModelMBeanInfoSupport(
+            "ModelConfig", 
+            "Model MBean pour la configuration", 
+            new ModelMBeanAttributeInfo[]{ levelInfo },
+            null,
+            new ModelMBeanOperationInfo[]{ rebootInfo },
+            null
+        );
+        modelMBean.setModelMBeanInfo(info);
+
+        ObjectName objectName = new ObjectName("com.exemple:type=ModelConfig");
+        mbs.registerMBean(modelMBean, objectName);
+
+        System.out.println("Model MBean enregistré sous : " + objectName);
+    }
+}
+```
 
 ---
 
-## **Cas d’usage typique**
+## Cas d’usage concret : supervision d’un stock
 
-- Exposer l’état ou les statistiques d’un service Java (ex: nombre de connexions, threads actifs…).
-- Modifier la configuration à la volée.
-- Lancer une action administrative (vidage cache, rechargement config…).
-- Supervision avec **JConsole** ou **VisualVM**.
-
----
-
-## **Exemple concret : supervision d’un stock**
+Dans cet exemple, un MBean expose l’état du stock et permet de le réinitialiser.
 
 ### 1. Interface MBean
 
@@ -81,32 +313,24 @@ StockManager manager = new StockManager(stock);
 mbs.registerMBean(manager, nom);
 ```
 
-### Accès via JConsole
+Accès via JConsole :
 
-- Lancez votre application.
-
-- Ouvrez jconsole (inclus dans le JDK).
-
-- Connectez-vous à l’application locale.
-
+- Lancez l’application.
+- Ouvrez jconsole et connectez-vous à l’application locale.
 - Naviguez dans l’arborescence com.monapp → StockManager.
-
-- Appelez getStockTotal ou déclenchez reinitialiserStock.
+- Appelez getStockTotal ou reinitialiserStock.
 
 ---
 
 # 5.2 Les MBeans et MBeanServer
 
-## **Qu’est-ce qu’un MBean ?**
+## Qu’est-ce qu’un MBean ?
 
-Un **MBean (Managed Bean)** est un objet Java représentant une **ressource managée** exposée via le système JMX. Un MBean expose des :
+Un MBean représente une ressource managée exposée via JMX. Il permet d’accéder à des attributs (lecture/écriture) et d’invoquer des opérations dynamiques.
 
-- **Attributs** : accessibles en lecture/écriture (ex : `getStatus`, `setThreshold`)
-- **Opérations** : appelables dynamiquement (ex : `viderCache()`, `rafraichirConfig()`)
+### Structure standard d’un MBean
 
-### **Structure standard d’un MBean**
-
-Un **Standard MBean** est défini par une **interface** suffixée par `MBean`, que la classe implémente.
+Un Standard MBean est défini par une interface suffixée par "MBean" et une classe implémentant cette interface.
 
 #### Exemple :
 
@@ -135,103 +359,34 @@ public class ServeurStatistiques implements ServeurStatistiquesMBean {
 }
 ```
 
-### Le MBeanServer
+### MBeanServer et enregistrement
 
-Un MBeanServer est un registre qui centralise tous les MBeans de l’application.
+Le MBeanServer est le registre central où chaque MBean est enregistré sous un ObjectName unique.
 
-Java fournit un MBeanServer par défaut via la JVM :
+#### Exemple d’obtention du MBeanServer
 
 ```java
 MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
 ```
 
-### Enregistrement d’un MBean
-
-Chaque MBean est identifié de façon unique par un ObjectName :
+#### Enregistrement d’un MBean
 
 ```java
 ObjectName name = new ObjectName("com.monapp:type=ServeurStatistiques");
 mbs.registerMBean(new ServeurStatistiques(), name);
 ```
 
-Le format de l'ObjectName est :
-
-```bash
-domaine:type=NomDuType[,clé=valeur,...]
-```
-
-### Cas d’usage
-
-Prenons un exemple d’un service REST qui expose :
-
-- Le nombre de requêtes traitées
-
-- Une méthode pour le remettre à zéro
-
-### Interface MBean
-
-```java
-public interface MonitoringRequetesMBean {
-    long getNbRequetes();
-    void reset();
-}
-```
-
-### Classe
-
-```java
-public class MonitoringRequetes implements MonitoringRequetesMBean {
-    private AtomicLong compteur = new AtomicLong();
-
-    public void incrementer() {
-        compteur.incrementAndGet();
-    }
-
-    public long getNbRequetes() {
-        return compteur.get();
-    }
-
-    public void reset() {
-        compteur.set(0);
-    }
-}
-```
-
-### Enregistrement
-
-```java
-MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
-ObjectName name = new ObjectName("com.api:type=MonitoringRequetes");
-mbs.registerMBean(new MonitoringRequetes(), name);
-```
-
-
-Ensuite, vous pouvez :
-
-- Consulter nbRequetes depuis JConsole
-
-- Réinitialiser dynamiquement le compteur
-
-- Ou automatiser via un script de supervision
-
 ---
 
 # 5.3 Mise en place d’une couche d’administration
 
-## **Objectif**
+Une couche d’administration permet de superviser et piloter une application en production sans interruption du service.
 
-Une **couche d’administration** permet de superviser et de piloter dynamiquement une application en production, sans l’arrêter. Grâce à **JMX**, cette couche peut :
+### 1. Créer les MBeans nécessaires
 
-- exposer des indicateurs de performance,
-- déclencher des opérations de maintenance,
-- surveiller des seuils ou états métier.
+Chaque composant critique à surveiller (ex. cache, pool de connexion) doit être modélisé en MBean.
 
----
-
-## **Étapes de mise en place**
-
-### 1. **Créer les MBeans nécessaires**
-Chaque composant critique à surveiller doit être modélisé en MBean (ex : cache, pool de connexion, file de messages...).
+Exemple d’un CacheManager :
 
 ```java
 public interface CacheManagerMBean {
@@ -258,8 +413,6 @@ public class CacheManager implements CacheManagerMBean {
 
 ### 2. Enregistrer les MBeans auprès du MBeanServer
 
-Cela rend les composants accessibles à distance via JMX :
-
 ```java
 MBeanServer serveur = ManagementFactory.getPlatformMBeanServer();
 ObjectName nom = new ObjectName("com.monapp:type=CacheManager");
@@ -268,183 +421,54 @@ serveur.registerMBean(new CacheManager(), nom);
 
 ### 3. Accès via JConsole ou outils externes
 
-- Lancez votre application
+- Lancez votre application.
+- Ouvrez JConsole et connectez-vous au processus.
+- Accédez à MBeans > com.monapp > CacheManager pour visualiser les attributs et invoquer les opérations.
 
-- Ouvrez JConsole (jconsole)
-
-- Connectez-vous au processus
-
-- Accédez à l’arbre MBeans > com.monapp > CacheManager
-
-- Visualisez les attributs et invoquez les opérations
-
-### Cas d’usage concret : Administration d’un entrepôt
-
-- Dans une application de gestion d'entrepôt, la couche JMX pourrait :
-
-- Exposer le nombre total d’articles (StockManagerMBean)
-
-- Offrir une méthode pour recharger tout le stock depuis une base
-
-- Permettre le déclenchement d’un inventaire manuel
-
-```java
-public interface StockManagerMBean {
-    int getStockTotal();
-    void rechargerDepuisBase();
-}
-
-public class StockManager implements StockManagerMBean {
-    private Stock stock;
-
-    public StockManager(Stock stock) {
-        this.stock = stock;
-    }
-
-    public int getStockTotal() {
-        return stock.getProduitsSnapshot().values().stream().mapToInt(Integer::intValue).sum();
-    }
-
-    public void rechargerDepuisBase() {
-        // Simulation rechargement
-        stock.ajouterProduit("Clavier", 100);
-        stock.ajouterProduit("Souris", 50);
-    }
-}
-```
-
-### Enregistrement :
-
-```java
-StockManager gestionnaire = new StockManager(monStock);
-ObjectName nom = new ObjectName("entrepot:type=StockManager");
-mbs.registerMBean(gestionnaire, nom);
-```
-Cette approche facilite une administration sans interruption de service.
+*Note : Le contenu lié au StockManager a été présenté précédemment (section 5.1) afin d’éviter les doublons.*
 
 ---
 
 # 5.4 La console d’administration (JConsole)
 
-## **Objectif**
+## Objectif
 
-**JConsole** est un outil graphique fourni avec le JDK qui permet de **surveiller et gérer une application Java** via **JMX**. Elle offre une interface conviviale pour :
+JConsole est un outil du JDK qui permet de surveiller et gérer une application Java via JMX. Il offre une interface graphique pour :
 
-- visualiser la consommation mémoire, les threads, les classes chargées,
-- interagir avec les **MBeans** exposés,
-- observer les attributs et invoquer les méthodes administratives dynamiquement.
+- Visualiser l’utilisation du CPU, la mémoire, et les threads.
+- Interagir avec les MBeans exposés.
+- Invoquer des méthodes administratives dynamiquement.
 
----
+## Lancer JConsole
 
-## **Lancer JConsole**
-
-Depuis un terminal :
+Exécutez la commande dans un terminal :
 
 ```bash
 jconsole
 ```
 
-Vous pouvez alors :
-
-- Choisir un processus local (votre application),
-
-- Ou entrer une URL distante (service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi).
-
-
-## Fonctionnalités principales
-### 1. Vue d'ensemble (Overview)
-
-- CPU utilisé
-
-- Mémoire vive
-
-- Nombre de threads actifs
-
-- Classes chargées/déchargées
-
-### 2. Mémoire (Memory)
-
-- Visualisation en temps réel des zones mémoire (Heap, PermGen, etc.)
-
-- Forçage du garbage collector manuellement
-
-- Suivi de l’empreinte mémoire de l’application
-
-### 3. Threads
-
-- Liste de tous les threads Java actifs
-
-- Vue hiérarchique
-
-- Identification des threads bloqués, en attente, etc.
-
-### 4. MBeans
-
-- L’onglet MBeans est le cœur de l’administration applicative :
-
-- Accès aux MBeans enregistrés (ex : com.monapp:type=CacheManager)
-
-- Affichage des attributs dynamiques
-
-- Invoquer des méthodes d’administration exposées
-
-## Exemple pratique : Interagir avec un MBean
-
-Si vous avez exposé ce MBean :
-
-```java
-public interface StockManagerMBean {
-    int getStockTotal();
-    void rechargerDepuisBase();
-}
-```
-
-Depuis JConsole :
-
-1. Onglet MBeans
-
-2. Naviguer vers entrepot > StockManager
-
-3. Cliquer sur Attributes pour lire le stock actuel
-
-4. Aller dans Operations et appeler rechargerDepuisBase()
-
-5. Le stock sera modifié immédiatement dans l'application
-
-### Avantages de JConsole
-
-- Aucune configuration complexe nécessaire
-
-- Surveillance en temps réel
-
-- Interface graphique intuitive
-
-- Permet une administration proactive
+Ensuite :
+- Choisissez un processus local ou entrez une URL distante.
+- Inspectez l’arborescence des MBeans pour accéder aux attributs et opérations.
 
 ---
 
 # 5.5 La communication à l’aide des adaptateurs et des connecteurs
 
-## **Objectif**
+## Objectif
 
-Dans JMX, les **adaptateurs** et **connecteurs** permettent d’**exposer les MBeans** à des clients distants ou via d’autres protocoles. Cela rend l’administration possible **à distance**, sans interface graphique embarquée.
+Les adaptateurs et connecteurs permettent d’exposer les MBeans à des clients distants ou via divers protocoles, autorisant une administration à distance.
 
----
+## Différence entre adaptateur et connecteur
 
-## **Différence entre adaptateur et connecteur**
+| Élément       | Rôle principal                                        |
+|---------------|-------------------------------------------------------|
+| Adaptateur    | Interface locale d’accès (ex. HTTP, SNMP)             |
+| Connecteur    | Accès à distance via un protocole de transport (ex. RMI) |
 
-| Élément     | Rôle principal                                              |
-|-------------|-------------------------------------------------------------|
-| **Adaptateur** | Interface locale d’accès (ex : HTTP, SNMP, etc.)         |
-| **Connecteur** | Fournit un accès à distance via un protocole de transport (ex : RMI) |
+## Exemple : Connecteur RMI
 
----
-
-## **Exemple : Connecteur RMI**
-
-Permet d’**exposer les MBeans via le protocole RMI**, pour se connecter avec JConsole à distance.
-
-### **Code d’exemple**
+Permet de se connecter à distance via JConsole.
 
 ```java
 import javax.management.*;
@@ -454,23 +478,19 @@ import java.rmi.registry.LocateRegistry;
 
 public class ServeurJMX {
     public static void main(String[] args) throws Exception {
-        // MBean Server
         MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
 
-        // Enregistrement du MBean
         ObjectName name = new ObjectName("entrepot:type=StockManager");
         StockManager mbean = new StockManager();
         mbs.registerMBean(mbean, name);
 
-        // Démarrage du registre RMI (port 9999)
+        // Démarrer le registre RMI sur le port 9999
         LocateRegistry.createRegistry(9999);
 
-        // Création de l’URL de service JMX
         JMXServiceURL url = new JMXServiceURL(
             "service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi"
         );
 
-        // Création du connecteur
         JMXConnectorServer cs = JMXConnectorServerFactory.newJMXConnectorServer(url, null, mbs);
         cs.start();
 
@@ -479,32 +499,8 @@ public class ServeurJMX {
 }
 ```
 
-### Connexion avec JConsole à distance
+Pour se connecter via JConsole à distance :
+1. Démarrez JConsole.
+2. Sélectionnez "Remote Process" et entrez l’URL indiquée.
+3. Interagissez avec les MBeans comme s’ils étaient locaux.
 
-Dans JConsole :
-
-1. Démarrer l’outil (jconsole)
-
-2. Sélectionner "Remote Process"
-
-3. Entrer l’URL : service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
-
-4. Interagir avec les MBeans comme si l’application était locale
-
-### Cas d’usage typique
-
-- Administration d’une application déployée sur un serveur (Tomcat, application Spring Boot, etc.)
-
-- Monitoring centralisé d’un parc d’applications Java
-
-- Connexion distante via un outil comme VisualVM, JConsole, ou Prometheus JMX Exporter
-
-### Sécurité
-
-Le connecteur peut être sécurisé avec :
-
-- SSL
-
-- Authentification par fichier (JMXRemote.access, JMXRemote.password)
-
-- Contrôle d’accès fin aux MBeans
