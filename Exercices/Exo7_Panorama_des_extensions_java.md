@@ -59,3 +59,105 @@ Objectif : Appliquer les opérations intermédiaires et terminales sur une colle
 4. Bonus : Utilisez un stream parallèle pour recalculer la somme totale des stocks.
 
 Testez votre code et vérifiez que les résultats correspondent aux attentes.
+
+---
+
+# 🧠 Exercice Avancé — Détection intelligente d’anomalies de paiements
+
+## 🎯 Objectif
+
+Développer un **analyseur concurrent d’anomalies de paiements**, capable de traiter des données hétérogènes issues de diverses sources et d’en extraire les irrégularités en utilisant :
+
+- des **Record Patterns complexes**,
+- un `switch` évolué avec `when`,
+- des **Virtual Threads**,
+- et la **Structured Concurrency**.
+
+---
+
+## 📘 Spécifications
+
+Vous devez :
+
+1. Créer différents types d’événements financiers à analyser.
+2. Implémenter une logique d’analyse basée sur un `switch` utilisant des `Record Patterns` combinés avec des conditions `when`.
+3. Lancer ces analyses en **Virtual Threads**, regroupées par la **Structured Concurrency**.
+4. Distinguer les événements « normaux », « suspects » et « frauduleux ».
+5. Générer un rapport final avec un comptage de chaque type.
+
+---
+
+## 📦 Modélisation des données
+
+```java
+public sealed interface EvenementPaiement permits PaiementCarte, VirementBancaire, RejetPaiement {}
+
+public record PaiementCarte(String id, String titulaire, double montant, String pays) implements EvenementPaiement {}
+public record VirementBancaire(String id, String iban, double montant, String motif) implements EvenementPaiement {}
+public record RejetPaiement(String id, String raison, boolean bloquant) implements EvenementPaiement {}
+```
+
+## 🔍 Analyse attendue via switch
+
+Vous devez appliquer un switch avec when comme suit :
+
+- PaiementCarte avec montant > 5000 et pays ≠ "FR" → fraude suspectée
+
+- VirementBancaire avec motif contenant "donation" et montant > 10000 → fraude potentielle
+
+- RejetPaiement bloquant avec raison = "compte clôturé" → anomalie critique
+
+- Tout autre cas → événement normal
+
+## 🧪 Exemple de jeu de test
+
+```java
+List<EvenementPaiement> events = List.of(
+    new PaiementCarte("PC01", "Alice", 6000, "US"),
+    new PaiementCarte("PC02", "Bob", 300, "FR"),
+    new VirementBancaire("VB01", "FR761234...", 12000, "donation anniversaire"),
+    new RejetPaiement("RJ01", "compte clôturé", true),
+    new RejetPaiement("RJ02", "provision insuffisante", false)
+);
+```
+
+## 🧩 Comportement du programme
+
+1. Chaque événement est traité en Virtual Thread.
+
+2. Les threads sont lancés et contrôlés par une Structured Concurrency (StructuredTaskScope.ShutdownOnFailure).
+
+3. Un switch avancé est utilisé pour analyser chaque événement.
+
+4. Les résultats sont comptabilisés par catégorie (normal, suspect, critique, frauduleux).
+
+5. Le programme affiche un rapport final détaillé.
+
+
+## ✅ Exemple de sortie attendue
+
+```yaml
+[ALERTE] PaiementCarte PC01 suspecté de fraude : montant élevé depuis US
+[OK] PaiementCarte PC02 traité normalement
+[ALERTE] VirementBancaire VB01 suspect : donation de plus de 10000 €
+[CRITIQUE] Rejet RJ01 : compte clôturé (bloquant)
+[OK] Rejet RJ02 sans impact
+
+=== RAPPORT FINAL ===
+- Événements normaux : 2
+- Suspects : 2
+- Critiques : 1
+
+```
+
+## 🛠 Contraintes
+
+- Utiliser uniquement les switch sur sealed interfaces + record patterns + when
+
+- Aucun if en dehors des when
+
+- Le traitement doit utiliser StructuredTaskScope.ShutdownOnFailure
+
+- Les Virtual Threads sont obligatoires
+
+- Le résultat de chaque analyse doit être imprimé depuis le thread d'analyse

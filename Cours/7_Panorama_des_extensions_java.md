@@ -38,12 +38,55 @@ public class Depot<T> {
     }
 }
 ```
+
 ```java
 Depot<String> d1 = new Depot<>();
 d1.ajouter("message");
 
 Depot<Integer> d2 = new Depot<>();
 d2.ajouter(42);
+```
+
+---
+
+### Specifications de types pour une methode de la classe generique
+
+```java
+public interface Ajouteur<T> {
+    void afficherAjout(T element);
+}
+
+public class AjouteurString implements Ajouteur<String> {
+    @Override
+    public void afficherAjout(String element) {
+        System.out.println("Ajout de chaîne : " + element.toUpperCase());
+    }
+}
+
+public class AjouteurParDefaut<T> implements Ajouteur<T> {
+    @Override
+    public void afficherAjout(T element) {
+        System.out.println("Ajout : " + element);
+    }
+}
+
+public class Depot<T> {
+    private final List<T> elements = new ArrayList<>();
+    private final Ajouteur<T> ajouteur;
+
+    public Depot(Ajouteur<T> ajouteur) {
+        this.ajouteur = ajouteur;
+    }
+
+    public void ajouter(T element) {
+        ajouteur.afficherAjout(element);
+        elements.add(element);
+    }
+
+    public T retirer() {
+        return elements.remove(0);
+    }
+}
 ```
 
 ---
@@ -655,7 +698,7 @@ try {
 
 Ainsi, Java 11 renforce non seulement les fonctionnalités existantes mais propose également de nouveaux outils pour rendre le développement plus fluide et performant.
 
-```
+---
 
 ## 3. Java 12 et 13 – Switch Expressions en Preview et Autres Améliorations
 
