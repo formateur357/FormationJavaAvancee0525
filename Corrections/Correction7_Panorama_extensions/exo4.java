@@ -200,6 +200,9 @@ public class AnalyseurPaiement {
             scope.join();
             // Propagation de l'éventuelle exception d'une tâche.
             scope.throwIfFailed();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("La tâche a été interrompue.");
         }
 
         // Affichage du rapport final de l'analyse.
